@@ -1,0 +1,9 @@
+<library path="lib/libkobuki_maze_escaper_nodelet">
+  <class name="kobuki_maze_escaper/RandomWalkerControllerNodelet"
+         type="kobuki::RandomWalkerControllerNodelet"
+         base_class_type="nodelet::Nodelet">
+    <description>
+      Nodelet the Kobuki's maze escaper controller
+    </description>
+  </class>
+</library>

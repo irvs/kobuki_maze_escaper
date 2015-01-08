@@ -1,0 +1,25 @@
+<!--
+  For Advanced Intelligent Robotics Course (Kyushu University in Japan)
+  Original source is the kobuki_controller_tutorial by Marcus Liebhardt, Yujin Robot
+                     the random_walker_controller by Marcus Liebhardt, Yujin Robot
+ -->
+<launch>
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="use_sim_time" value="true"/>
+    <arg name="debug" value="false"/>
+    <arg name="world_name" value="$(find kobuki_maze_escaper)/worlds/maze.world"/>
+  </include>
+
+  <include file="$(find kobuki_gazebo)/launch/includes/robot.launch.xml"/>
+
+  <node pkg="nodelet" type="nodelet" name="kobuki_maze_escaper_controller"
+        args="load kobuki_maze_escaper/RandomWalkerControllerNodelet mobile_base_nodelet_manager">
+    <param name="update_rate"                                       value="10.0"/>
+    <param name="linear_velocity"                                   value="0.5"/>
+    <param name="angular_velocity"                                  value="5.0"/>
+    <remap from="kobuki_maze_escaper_controller/events/bumper"     to="mobile_base/events/bumper"/>
+    <remap from="kobuki_maze_escaper_controller/events/cliff"      to="mobile_base/events/cliff"/>
+    <remap from="kobuki_maze_escaper_controller/events/wheel_drop" to="mobile_base/events/wheel_drop"/>
+    <remap from="kobuki_maze_escaper_controller/commands/velocity" to="mobile_base/commands/velocity"/>
+  </node>
+</launch>
