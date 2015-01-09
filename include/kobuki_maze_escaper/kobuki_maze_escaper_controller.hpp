@@ -16,7 +16,11 @@
 #include <kobuki_msgs/WheelDropEvent.h>
 #include <ros/ros.h>
 #include <std_msgs/Empty.h>
+#include <nav_msgs/Odometry.h>
 #include <yocs_controllers/default_controller.hpp>
+
+#define rad2deg(x) ((x)*(180.0)/M_PI)
+#define deg2rad(x) ((x)*M_PI/180.0)
 
 namespace kobuki
 {
@@ -25,27 +29,29 @@ class RandomWalkerController : public yocs::Controller
 {
 public:
   RandomWalkerController(ros::NodeHandle& nh_priv, std::string& name) : Controller(),
-                                                                           nh_priv_(nh_priv),
-                                                                           name_(name),
-                                                                           change_direction_(false),
-                                                                           stop_(false),
-                                                                           isGoal_(false),
-                                                                           bumper_left_pressed_(false),
-                                                                           bumper_center_pressed_(false),
-                                                                           bumper_right_pressed_(false),
-                                                                           cliff_left_detected_(false),
-                                                                           cliff_center_detected_(false),
-                                                                           cliff_right_detected_(false),
-                                                                           turning_(false),
-                                                                           turning_direction_(1)
-                                                                           {};
+                                                                        nh_priv_(nh_priv),
+                                                                        name_(name),
+                                                                        change_direction_(false),
+                                                                        stop_(false),
+                                                                        isGoal_(false),
+                                                                        bumper_left_pressed_(false),
+                                                                        bumper_center_pressed_(false),
+                                                                        bumper_right_pressed_(false),
+                                                                        cliff_left_detected_(false),
+                                                                        cliff_center_detected_(false),
+                                                                        cliff_right_detected_(false),
+                                                                        turning_(false),
+                                                                        turning_direction_(1)
+                                                                        {};
+
   ~RandomWalkerController(){};
 
   bool init()
   {
     bumper_event_subscriber_ = nh_priv_.subscribe("events/bumper", 10, &RandomWalkerController::bumperEventCB, this);
-    cliff_event_subscriber_ = nh_priv_.subscribe("events/cliff", 10, &RandomWalkerController::cliffEventCB, this);
-    cmd_vel_publisher_ = nh_priv_.advertise<geometry_msgs::Twist>("commands/velocity", 10);
+    cliff_event_subscriber_  = nh_priv_.subscribe("events/cliff", 10, &RandomWalkerController::cliffEventCB, this);
+    odom_subscriber_         = nh_.subscribe("odom", 10, &RandomWalkerController::odomEventCB, this);
+    cmd_vel_publisher_       = nh_priv_.advertise<geometry_msgs::Twist>("commands/velocity", 10);
 
     nh_priv_.param("linear_velocity", vel_lin_, 0.5);
     nh_priv_.param("angular_velocity", vel_ang_, 0.1);
@@ -60,11 +66,11 @@ public:
 
 private:
   /// Private ROS handle
-  ros::NodeHandle nh_priv_;
+  ros::NodeHandle nh_priv_, nh_;
   /// Node(let) name
   std::string name_;
   /// Subscribers
-  ros::Subscriber bumper_event_subscriber_, cliff_event_subscriber_;
+  ros::Subscriber bumper_event_subscriber_, cliff_event_subscriber_, odom_subscriber_;
   /// Publishers
   ros::Publisher cmd_vel_publisher_;
   /// Flag for changing direction
@@ -101,6 +107,8 @@ private:
   ros::Time etime_;
   /// Goal
   bool isGoal_;
+  /// global pos of x, y and theta
+  double pos_x_, pos_y_, pos_th_;
 
   /**
    * @brief Trigger direction change and LED blink, when a bumper is pressed
@@ -113,6 +121,18 @@ private:
    * @param msg cliff event
    */
   void cliffEventCB(const kobuki_msgs::CliffEventConstPtr msg);
+
+  /**
+   * @brief get odometry information of kobuki
+   * @param msg odom event
+   */
+  void odomEventCB(const nav_msgs::Odometry::ConstPtr& msg);
+
+  /**
+   * @brief calculate z-axis rotation from Odom_Quaternion(z, w) -180 ~ +180
+   * @param quaternion z and w
+   */
+  double quaternionToEuler(double z, double w);
 };
 
 void RandomWalkerController::bumperEventCB(const kobuki_msgs::BumperEventConstPtr msg)
@@ -199,9 +219,33 @@ void RandomWalkerController::cliffEventCB(const kobuki_msgs::CliffEventConstPtr 
 
   if(cliff_left_detected_ && cliff_center_detected_ && cliff_right_detected_)
   {
-    stop_ = true;
+    //stop_ = true;
     ROS_INFO_STREAM("Goal. Stopping!");
   }
+};
+
+double RandomWalkerController::quaternionToEuler(double z, double w)
+{
+  double sqw, sqz;
+  sqw = w*w;
+  sqz = z*z;
+  return atan2(2.0*(z*w),(-sqz + sqw));
+};
+
+void RandomWalkerController::odomEventCB(const nav_msgs::Odometry::ConstPtr& msg)
+{
+  double z, w;
+  double temp_th;
+
+  pos_x_ = msg->pose.pose.position.x;
+  pos_y_ = msg->pose.pose.position.y;
+
+  z = msg->pose.pose.orientation.z;
+  w = msg->pose.pose.orientation.w;
+  temp_th = quaternionToEuler(z, w);
+  pos_th_ = rad2deg(temp_th);
+
+  ROS_INFO("pos: %f, %f, %f",pos_x_, pos_y_, pos_th_);
 };
 
 void RandomWalkerController::spin()
