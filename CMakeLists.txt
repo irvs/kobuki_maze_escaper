@@ -25,9 +25,16 @@ include_directories(include
 
 add_library(kobuki_maze_escaper_nodelet src/nodelet.cpp)
 add_dependencies(kobuki_maze_escaper_nodelet geometry_msgs_gencpp
-                                              kobuki_msgs_gencpp
-                                              std_msgs_gencpp)
+                                             kobuki_msgs_gencpp
+                                             std_msgs_gencpp)
+
 target_link_libraries(kobuki_maze_escaper_nodelet ${catkin_LIBRARIES})
+
+
+add_executable(maze_solution src/maze_solution.cpp)
+add_dependencies(maze_solution kobuki_msgs_gencpp geometry_msgs_gencpp)
+target_link_libraries(maze_solution ${catkin_LIBRARIES})
+
 
 install(TARGETS kobuki_maze_escaper_nodelet
         DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})

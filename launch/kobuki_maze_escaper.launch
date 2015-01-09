@@ -22,4 +22,7 @@
     <remap from="kobuki_maze_escaper_controller/events/wheel_drop" to="mobile_base/events/wheel_drop"/>
     <remap from="kobuki_maze_escaper_controller/commands/velocity" to="mobile_base/commands/velocity"/>
   </node>
+
+  <node pkg="kobuki_maze_escaper" type="maze_solution" name="maze_solution">
+  </node>
 </launch>
