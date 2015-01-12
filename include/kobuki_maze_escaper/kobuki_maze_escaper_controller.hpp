@@ -17,10 +17,6 @@
 #include <ros/ros.h>
 #include <std_msgs/Empty.h>
 #include <yocs_controllers/default_controller.hpp>
-#include <gazebo_msgs/GetModelState.h>
-
-#define rad2deg(x) ((x)*(180.0)/M_PI)
-#define deg2rad(x) ((x)*M_PI/180.0)
 
 namespace kobuki
 {
@@ -48,8 +44,8 @@ public:
   bool init()
   {
     bumper_event_subscriber_ = nh_priv_.subscribe("events/bumper", 10, &RandomWalkerController::bumperEventCB, this);
+    cliff_event_subscriber_ = nh_priv_.subscribe("events/cliff", 10, &RandomWalkerController::cliffEventCB, this);
     cmd_vel_publisher_ = nh_priv_.advertise<geometry_msgs::Twist>("commands/velocity", 10);
-    kobuki_property_client_  = nh_.serviceClient<gazebo_msgs::GetModelState>("/gazebo/get_model_state");
 
     nh_priv_.param("linear_velocity", vel_lin_, 0.5);
     nh_priv_.param("angular_velocity", vel_ang_, 0.1);
@@ -63,14 +59,12 @@ public:
   void spin();
 
 private:
-  /// ROS handle
-  ros::NodeHandle nh_;
+  /// Private ROS handle
   ros::NodeHandle nh_priv_;
   /// Node(let) name
   std::string name_;
   /// Subscribers
-  ros::Subscriber bumper_event_subscriber_;
-  ros::ServiceClient kobuki_property_client_;
+  ros::Subscriber bumper_event_subscriber_, cliff_event_subscriber_;
   /// Publishers
   ros::Publisher cmd_vel_publisher_;
   /// Flag for changing direction
@@ -107,8 +101,6 @@ private:
   ros::Time etime_;
   /// Goal
   bool isGoal_;
-  /// global pos of x, y and theta
-  double pos_x_, pos_y_, pos_th_;
 
   /**
    * @brief Trigger direction change and LED blink, when a bumper is pressed
@@ -117,18 +109,11 @@ private:
   void bumperEventCB(const kobuki_msgs::BumperEventConstPtr msg);
 
   /**
-   * @brief calculate z-axis rotation from Odom_Quaternion(z, w) -180 ~ +180
-   * @param quaternion z and w
+   * @brief Trigger direction change and LED blink, when a cliff is detected
+   * @param msg cliff event
    */
-  double quaternionToEuler(double z, double w);
-
-  /**
-   * @brief get model property from gazebo
-   */
-  void getPropertyCallback(const ros::TimerEvent& e);
-
+  void cliffEventCB(const kobuki_msgs::CliffEventConstPtr msg);
 };
-
 
 void RandomWalkerController::bumperEventCB(const kobuki_msgs::BumperEventConstPtr msg)
 {
@@ -137,17 +122,28 @@ void RandomWalkerController::bumperEventCB(const kobuki_msgs::BumperEventConstPt
     switch (msg->bumper)
     {
       case kobuki_msgs::BumperEvent::LEFT:
-        ROS_INFO_STREAM("Bumper LEFT: True");
-        bumper_left_pressed_ = true;
+        if (!bumper_left_pressed_)
+        {
+          ROS_INFO_STREAM("Bumper: LEFT");
+          bumper_left_pressed_ = true;
+          change_direction_ = true;
+        }
         break;
       case kobuki_msgs::BumperEvent::CENTER:
-        ROS_INFO_STREAM("Bumper CENTER: True");
-        bumper_center_pressed_ = true;
-        change_direction_ = true;
+        if (!bumper_center_pressed_)
+        {
+          ROS_INFO_STREAM("Bumper: CENTER");
+          bumper_center_pressed_ = true;
+          change_direction_ = true;
+        }
         break;
       case kobuki_msgs::BumperEvent::RIGHT:
-        ROS_INFO_STREAM("Bumper RIGHT: True");
-        bumper_right_pressed_ = true;
+        if (!bumper_right_pressed_)
+        {
+          ROS_INFO_STREAM("Bumper: RIGHT");
+          bumper_right_pressed_ = true;
+          change_direction_ = true;
+        }
         break;
     }
   }
@@ -155,53 +151,116 @@ void RandomWalkerController::bumperEventCB(const kobuki_msgs::BumperEventConstPt
   {
     switch (msg->bumper)
     {
-      case kobuki_msgs::BumperEvent::LEFT:
-        ROS_INFO_STREAM("Bumper LEFT: False");
-        bumper_left_pressed_ = false;
+      case kobuki_msgs::BumperEvent::LEFT:    bumper_left_pressed_   = false; break;
+      case kobuki_msgs::BumperEvent::CENTER:  bumper_center_pressed_ = false; break;
+      case kobuki_msgs::BumperEvent::RIGHT:   bumper_right_pressed_  = false; break;
+    }
+  }
+};
+
+void RandomWalkerController::cliffEventCB(const kobuki_msgs::CliffEventConstPtr msg)
+{
+  if (msg->state == kobuki_msgs::CliffEvent::CLIFF)
+  {
+    switch (msg->sensor)
+    {
+      case kobuki_msgs::CliffEvent::LEFT:
+        if (!cliff_left_detected_)
+        {
+          ROS_INFO_STREAM("Cliff: LEFT");
+          cliff_left_detected_ = true;
+        }
         break;
-      case kobuki_msgs::BumperEvent::CENTER:
-        ROS_INFO_STREAM("Bumper CENTER: False");
-        bumper_center_pressed_ = false;
+      case kobuki_msgs::CliffEvent::CENTER:
+        if (!cliff_center_detected_)
+        {
+          ROS_INFO_STREAM("Cliff: CENTER");
+          cliff_center_detected_ = true;
+        }
         break;
-      case kobuki_msgs::BumperEvent::RIGHT:
-        ROS_INFO_STREAM("Bumper RIGHT: False");
-        bumper_right_pressed_ = false;
+      case kobuki_msgs::CliffEvent::RIGHT:
+        if (!cliff_right_detected_)
+        {
+          ROS_INFO_STREAM("Cliff: RIGHT");
+          cliff_right_detected_ = true;
+        }
         break;
     }
   }
-}
+  else // kobuki_msgs::BumperEvent::FLOOR
+  {
+    switch (msg->sensor)
+    {
+      case kobuki_msgs::CliffEvent::LEFT:    cliff_left_detected_   = false; break;
+      case kobuki_msgs::CliffEvent::CENTER:  cliff_center_detected_ = false; break;
+      case kobuki_msgs::CliffEvent::RIGHT:   cliff_right_detected_  = false; break;
+    }
+  }
 
-//------------------------------------------------------------------------------
-double RandomWalkerController::quaternionToEuler(double z, double w)
-{
-  double sqw, sqz;
-  sqw = w*w;
-  sqz = z*z;
-  return atan2(2.0*(z*w),(-sqz + sqw));
-}
+  if(cliff_left_detected_ && cliff_center_detected_ && cliff_right_detected_)
+  {
+    //stop_ = true;
+    ROS_INFO_STREAM("Goal. Stopping!");
+  }
+};
 
-//------------------------------------------------------------------------------
 void RandomWalkerController::spin()
 {
-  double z, w;
-  double temp_th;
+  // Velocity commands
+  geometry_msgs::TwistPtr cmd_vel_msg_ptr;
+  cmd_vel_msg_ptr.reset(new geometry_msgs::Twist());
 
-  gazebo_msgs::GetModelState get_model_state;
-  get_model_state.request.model_name = "mobile_base";
-
-  if(kobuki_property_client_.call(get_model_state))
+  if (stop_)
   {
-    pos_x_ = get_model_state.response.pose.position.x;
-    pos_y_ = get_model_state.response.pose.position.y;
+    if(!isGoal_)
+    {
+      etime_ = ros::Time::now();
+      double secs = (etime_ - stime_).toSec();
+      ROS_INFO("elapsed time: %f",secs);
+    }
+    isGoal_ = true;
+    cmd_vel_publisher_.publish(cmd_vel_msg_ptr); // will be all zero when initialised
 
-    z = get_model_state.response.pose.orientation.z;
-    w = get_model_state.response.pose.orientation.w;
-    temp_th = quaternionToEuler(z, w);
-    pos_th_ = rad2deg(temp_th);
+    return;
   }
-  ROS_INFO("[%.2f, %.2f, %.2f] [%d,%d,%d]",pos_x_, pos_y_, pos_th_, bumper_left_pressed_, bumper_center_pressed_, bumper_right_pressed_);
-}
 
-//------------------------------------------------------------------------------
+  if (change_direction_)
+  {
+    change_direction_ = false;
+    // calculate a random turning angle (-180 ... +180) based on the set angular velocity
+    // time for turning 180 degrees in seconds = M_PI / angular velocity
+    turning_duration_ = ros::Duration(((double)std::rand() / (double)RAND_MAX) * (M_PI / vel_ang_));
+    // randomly chosen turning direction
+    if (((double)std::rand() / (double)RAND_MAX) >= 0.5)
+    {
+      turning_direction_ = 1;
+    }
+    else
+    {
+      turning_direction_ = -1;
+    }
+    turning_start_ = ros::Time::now();
+    turning_ = true;
+  }
+
+  if (turning_)
+  {
+    if ((ros::Time::now() - turning_start_) < turning_duration_)
+    {
+      cmd_vel_msg_ptr->angular.z = turning_direction_ * vel_ang_;
+      cmd_vel_publisher_.publish(cmd_vel_msg_ptr);
+    }
+    else
+    {
+      turning_ = false;
+    }
+  }
+  else
+  {
+    cmd_vel_msg_ptr->linear.x = vel_lin_;
+    cmd_vel_publisher_.publish(cmd_vel_msg_ptr);
+  }
+};
+
 } // namespace kobuki
 #endif /* RANDOM_WALKER_CONTROLLER_HPP_ */

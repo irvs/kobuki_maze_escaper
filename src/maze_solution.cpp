@@ -92,12 +92,6 @@ private:
   void checkCallback(const ros::TimerEvent& e);
 
   /**
-   * @brief Controller using absolute position and angle value
-   * @param goal x, y, theta
-   */
-  void moveControl(double goal_dis, double goal_ang);
-
-  /**
    * @brief forward speed linear[m/s] rotational_speed angular[rad/s]
    * @param linear and angular value
    */
@@ -186,7 +180,7 @@ void MazeSolution::getPropertyCallback(const ros::TimerEvent& e)
     pos_th_ = rad2deg(temp_th);
   }
 
-  ROS_INFO("pos: %.2f, %.2f, %.2f, %d",pos_x_, pos_y_, pos_th_, change_direction_);
+  ROS_INFO("%.2f, %.2f, %.2f, [%d,%d,%d,%d]",pos_x_, pos_y_, pos_th_, bumper_left_pressed_, bumper_center_pressed_, bumper_right_pressed_, change_direction_);
 }
 
 //------------------------------------------------------------------------------
@@ -200,110 +194,6 @@ void MazeSolution::pubVel(double linear, double angular)
 }
 
 //------------------------------------------------------------------------------
-void MazeSolution::moveControl(double goal_dis, double goal_ang)
-{
-  double ini_pos_x, ini_pos_y, ini_pos_th_;
-  double var_pos_x, var_pos_y, var_pos_th;
-
-  //initialize variables
-  ini_pos_x   = pos_x_;
-  ini_pos_y   = pos_y_;
-  ini_pos_th_ = pos_th_;
-
-  var_pos_x  = pos_x_;
-  var_pos_y  = pos_y_;
-  var_pos_th = pos_th_;
-
-  if (goal_ang > 0)
-  {
-    while (1) // rotate +
-    {
-      ROS_INFO("[%.2f, %.2f, %.2f] [%d,%d,%d]",pos_x_, pos_y_, pos_th_, bumper_left_pressed_, bumper_center_pressed_, bumper_right_pressed_);
-      if (ini_pos_th_ + goal_ang > 180)
-      {
-        if ((-180 - ini_pos_th_ <= var_pos_th && var_pos_th < goal_ang - 360) || (0 <= var_pos_th && var_pos_th <= 180 - goal_ang))
-        {
-          pubVel(0.0, 0.523596);
-          ros::spinOnce();
-          var_pos_th = pos_th_;
-        }
-        else
-        {
-          pubVel(0.0, 0.0);
-          break;
-        }
-      }
-      else
-      {
-        if (fabs(var_pos_th - ini_pos_th_) < fabs(goal_ang))
-        {
-          pubVel(0.0, 0.523596);
-          ros::spinOnce();
-          var_pos_th = pos_th_;
-        }
-        else
-        {
-          pubVel(0.0, 0.0);
-          break;
-        }
-      }
-    }
-  }
-  else
-  {
-    while (1)  // rotate -
-    {
-      ROS_INFO("[%.2f, %.2f, %.2f] [%d,%d,%d]",pos_x_, pos_y_, pos_th_, bumper_left_pressed_, bumper_center_pressed_, bumper_right_pressed_);
-      if(ini_pos_th_ + goal_ang < -180)
-      {
-        if ((-180 - ini_pos_th_ <= var_pos_th && var_pos_th <= 0) || (goal_ang + 360 < var_pos_th && var_pos_th <= 180 - ini_pos_th_))
-        {
-          pubVel(0.0, -0.523596);
-          ros::spinOnce();
-          var_pos_th = pos_th_;
-        }
-        else
-        {
-          pubVel(0.0, 0.0);
-          break;
-        }
-      }
-      else
-      {
-        if (fabs(var_pos_th - ini_pos_th_) < fabs(goal_ang))
-        {
-          pubVel(0.0, -0.523596);
-          ros::spinOnce();
-          var_pos_th = pos_th_;
-        }
-        else
-        {
-          pubVel(0.0, 0.0);
-          break;
-        }
-      }
-    }
-  }
-
-//  while (1)
-//  {
-//    ROS_INFO("pos: %f, %f, %f",pos_x_, pos_y_, pos_th_);
-//    if (calculateDistance(ini_pos_x, ini_pos_y, var_pos_x, var_pos_y) <  goal_dis)
-//    {
-//      pubVel(0.2, 0.0);
-//      ros::spinOnce();
-//      var_pos_x = pos_x_;
-//      var_pos_y = pos_y_;
-//    }
-//    else
-//    {
-//      pubVel(0.0, 0.0);
-//      break;
-//    }
-//  }
-}
-
-//------------------------------------------------------------------------------
 void MazeSolution::checkCallback(const ros::TimerEvent& e)
 {
   // Velocity commands
@@ -312,14 +202,9 @@ void MazeSolution::checkCallback(const ros::TimerEvent& e)
 
   if (change_direction_)
   {
-    change_direction_ = false;
-    moveControl(0, pos_th_ - 30);
   }
   else
   {
-    change_direction_ = false;
-    cmd_vel_msg_ptr->linear.x = 0.5;
-    cmd_vel_publisher_.publish(cmd_vel_msg_ptr);
   }
 }
 
